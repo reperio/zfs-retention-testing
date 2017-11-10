@@ -1,0 +1,29 @@
+{
+  "retentions": [
+    {
+      "interval": "quarter_hourly",
+      "offset": 5,
+      "retention": 2
+    },
+    {
+      "interval": "hourly",
+      "offset": 30,
+      "retention": 3
+    },
+    {
+      "interval": "daily",
+      "offset": 0,
+      "retention": 2
+    },
+    {
+      "interval": "weekly",
+      "offset": 0,
+      "retention": 2
+    },
+    {
+      "interval": "monthly",
+      "offset": 0,
+      "retention": 2
+    }
+  ]
+}

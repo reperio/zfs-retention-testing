@@ -1,104 +1,83 @@
 const moment = require('moment');
+const _ = require('lodash');
 
 class RetentionTesting {
-    manipulateDate (date, timeFrame, number) {
-        let newDate = date.clone();
-        number = number - 1 || 0;
-        if (number < 0) number = 0;
+    getStartOfQuarterHour (date, iteration) {
+        const target = moment(date);
+        let current = moment().add(1, 'hours').startOf('hour');
 
-        //console.log("before change: " + newDate.format('LLL'));
-        newDate.startOf(timeFrame);
-        newDate.subtract(number, timeFrame + "s");
-        //console.log("after change: " + newDate.format('LLL'));
-        return newDate;
-    }
-    getStartOf15Minutes (date, number) {
-        let newDate = date.clone();
-        number = number - 1 || 0;
-        if (number < 0) number = 0;
+        while (current.isAfter(target)) {
+            current = current.subtract(15, 'minutes');
+        }
 
-        //console.log("before change: " + newDate.format('LLL'));
-        newDate.minutes(Math.floor(newDate.minutes() / 15) * 15);
-        newDate.subtract(number * 15, "minutes");
-        //console.log("after change: " + newDate.format('LLL'));
-        return newDate;
+        current = current.subtract(iteration * 15, 'minutes');
+        
+        return current;
     }
-    getStartOfHour (date, number)  {
-        return this.manipulateDate(date, "hour", number);
+    getStartOfHour (date, iteration) {
+        return moment(date).startOf('hour').subtract(iteration, 'hours');
     }
-    getStartOfDay (date, number)  {
-        return this.manipulateDate(date, "day", number);
+    getStartOfDay (date, iteration) {
+        return moment(date).startOf('day').subtract(iteration, 'days');
     }
-    getStartOfWeek (date, number) {
-        return this.manipulateDate(date, "week", number);
+    getStartOfWeek (date, iteration) {
+        return moment(date).startOf('week').subtract(iteration, 'weeks');
     }
-    getStartOfMonth (date, number) {
-        return this.manipulateDate(date, "month", number);
+    getStartOfMonth (date, iteration) {
+        return moment(date).startOf('month').subtract(iteration, 'months');
     }
-    applyRetentionLogic (snapshots, date, retention_policy) {
-        let snapshotsToKeep = [];
-        let snapshotsToDelete = [];
-        for(let policy of retention_policy.retentions){
-            for(let num = 0; num < policy.retention; num++){
 
-                //get starting point for search based on interval
-                let newDate = null;
-                switch (interval) {
-                    case 'quater_hourly':
-                        newDate = this.getStartOf15Minutes(date, num);
-                        break;
-                    case 'hourly':
-                        newDate = this.getStartOfHour(date, num);
-                        break;
-                    case 'daily':
-                        newDate = this.getStartOfDay(date, num);
-                        break;
-                    case 'weekly':
-                        newDate = this.getStartOfWeek(date, num);
-                        break;
-                    case 'monthly':
-                        newDate = this.getStartOfMonth(date, num);
-                        break;
-                }
+    find_retention_target_date (interval, iteration) {
+        const now = moment();
+        switch (interval) {
+            case 'quarter_hourly':
+                return this.getStartOfQuarterHour(now, iteration);
+            case 'hourly':
+                return this.getStartOfHour(now, iteration);
+            case 'daily':
+                return this.getStartOfDay(now, iteration);
+            case 'weekly':
+                return this.getStartOfWeek(now, iteration);
+            case 'monthly':
+                return this.getStartOfMonth(now, iteration);
+            default:
+                throw new Error('Invalid retention interval');
+        }
+    }
 
-                const policySnapshot = this.getFirstSnapshotAfterDate(snapshots, newDate);
-                if (policySnapshot !== null) {
-                    snapshotsToKeep.push(policySnapshot);
+    get_snapshots_to_delete (snapshots, retention_policy) {
+        for(let retention of retention_policy.retentions) {
+            for(let iteration = 0; iteration <= retention.retention; iteration++) {
+                let target_date = this.find_retention_target_date(retention.interval, iteration);
+
+                const policySnapshot = this.getFirstSnapshotAfterDate(snapshots, target_date);
+                
+                if (policySnapshot) {
+                    policySnapshot.keep = true;
                 }
             }
         }
 
-        let policySnapshotIds = [];
-        for (let i = 0; i < snapshotsToKeep.length; i++){
-            policySnapshotIds.push(snapshotsToKeep[i].id);
-        }
+        let snapshotsToDelete = _.filter(snapshots, function(snapshot) {
+            return !snapshot.keep;
+        });
 
-        for(let i = 0; i < snapshots.length; i++){
-            if (!policySnapshotIds.contains(snapshots[i].id)){
-                snapshotsToDelete.push(snapshots[i]);
-            }
-        }
-
-        return {
-            snapshotsToDelete: snapshotsToDelete,
-            snapshotsToKeep: snapshotsToKeep
-        };
+        return snapshotsToDelete;
     }
 
     getFirstSnapshotAfterDate (snapshots, date) {
         let startDate = date.clone();
-        //startDate.subtract(1, "minutes");
-        //console.log(startDate.format('LLL'));
+
         for (let i = 0; i < snapshots.length; i++) {
-            if (moment.utc(snapshots[i].snapshot_date_time).valueOf() >= startDate.valueOf()){
+            if (moment.utc(snapshots[i].snapshot_date_time).valueOf() >= startDate.valueOf()) {
                 return snapshots[i];
             }
         }
 
         return null;
     }
-    sortSnapshots(snapshots){
-        return snapshots.sort(function(a,b) {
+    sortSnapshots(snapshots) {
+        return snapshots.sort(function(a, b) {
             return moment().utc(a.snapshot_date_time).valueOf() - moment().utc(b.snapshot_date_time).valueOf();
         });
     }
@@ -112,4 +91,32 @@ module.exports = RetentionTesting;
 *   2) Set closest_snapshot to snapshots[snapshots.length - 1], loop over snapshots, test if closest_snapshot is > snapshots[i] if snapshots[i] is >= startDate
 *
 */
+
+
+/**
+ * {
+    retentions: [
+        {
+            interval: quater_hourly,
+            retention: 1
+        },
+        {
+            interval: hourly,
+            retention: 1
+        },
+        {
+            interval: daily,
+            retention: 1
+        },
+        {
+            interval: weekly,
+            retention: 1
+        },
+        {
+            interval: monthly,
+            retention: 1
+        }
+    ]
+}
+ */
 

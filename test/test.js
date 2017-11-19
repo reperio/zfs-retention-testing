@@ -5,6 +5,7 @@ const assert = require('assert');
 const fs = require('fs');
 const RetentionTesting = require('../index.js');
 const moment = require('moment');
+const _ = require('lodash');
 
 describe('Retention Tests', async function() {
     //load the test data
@@ -473,8 +474,60 @@ describe('Retention Tests', async function() {
 
         for (let i = 0; i < firstSnapshotTests.length; i++) {
             it(`Looking for first snapshot after (${firstSnapshotTests[i].startDate}), should have id (${firstSnapshotTests[i].expectedId})`, () => {
-                assert.equal(firstSnapshotTests[i].expectedId, retentionTestClass.getFirstSnapshotAfterDate(this.test_data, moment.utc(firstSnapshotTests[i].startDate)).id);
+                const snapshot = retentionTestClass.getFirstSnapshotAfterDate(this.test_data, moment.utc(firstSnapshotTests[i].startDate));
+                
+                assert.equal(firstSnapshotTests[i].expectedId, snapshot.job_history_id);
             });
         }
+    });
+
+    describe('Full Retention Tests', () => {
+        let snapshots = [];
+
+        const retention_policy_1 = {
+            retentions: [
+                {
+                    interval: 'quarter_hourly',
+                    retention: 1
+                },
+                {
+                    interval: 'hourly',
+                    retention: 1
+                },
+                {
+                    interval: 'daily',
+                    retention: 1
+                },
+                {
+                    interval: 'weekly',
+                    retention: 1
+                },
+                {
+                    interval: 'monthly',
+                    retention: 1
+                }
+            ]
+        };
+
+        beforeEach(() => {
+            snapshots = _.cloneDeep(this.test_data);
+        });
+
+        it('Should keep 8 for retention policy 1 at 2017-11-19T03:20:00.000Z', () => {
+            const snapshots_to_delete = retentionTestClass.get_snapshots_to_delete(snapshots, retention_policy_1, moment.utc('2017-11-19T03:20:00.000Z'));
+            assert.equal(snapshots_to_delete.length, 9992);
+        });
+
+        it('Should keep 9 for retention policy 1 at 2017-11-19T03:40:00.000Z', () => {
+            const snapshots_to_delete = retentionTestClass.get_snapshots_to_delete(snapshots, retention_policy_1, moment.utc('2017-11-19T03:40:00.000Z'));
+            console.log(snapshots_to_delete.length);
+            assert.equal(snapshots_to_delete.length, 9991);
+        });
+
+        it('Should keep 10 for retention policy 1 at 2017-11-21T03:40:00.000Z', () => {
+            const snapshots_to_delete = retentionTestClass.get_snapshots_to_delete(snapshots, retention_policy_1, moment.utc('2017-11-21T03:40:00.000Z'));
+            console.log(snapshots_to_delete.length);
+            assert.equal(snapshots_to_delete.length, 9990);
+        });
     });
 });

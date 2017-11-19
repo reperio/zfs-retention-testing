@@ -27,8 +27,8 @@ class RetentionTesting {
         return moment(date).startOf('month').subtract(iteration, 'months');
     }
 
-    find_retention_target_date (interval, iteration) {
-        const now = moment();
+    find_retention_target_date (interval, iteration, initial_date) {
+        const now = moment(initial_date);
         switch (interval) {
             case 'quarter_hourly':
                 return this.getStartOfQuarterHour(now, iteration);
@@ -41,19 +41,23 @@ class RetentionTesting {
             case 'monthly':
                 return this.getStartOfMonth(now, iteration);
             default:
-                throw new Error('Invalid retention interval');
+                throw new Error(`Invalid retention interval: ${interval}`);
         }
     }
 
-    get_snapshots_to_delete (snapshots, retention_policy) {
+    get_snapshots_to_delete (snapshots, retention_policy, start_date) {
+        let initial_date = start_date || moment();
         for(let retention of retention_policy.retentions) {
             for(let iteration = 0; iteration <= retention.retention; iteration++) {
-                let target_date = this.find_retention_target_date(retention.interval, iteration);
+                let target_date = this.find_retention_target_date(retention.interval, iteration, initial_date);
 
                 const policySnapshot = this.getFirstSnapshotAfterDate(snapshots, target_date);
                 
                 if (policySnapshot) {
+                    console.log(`KEEPING ${policySnapshot.job_history_id}`);
+                    //console.log(policySnapshot);
                     policySnapshot.keep = true;
+                    policySnapshot[`keep-${retention.interval}`] = true;
                 }
             }
         }
@@ -62,14 +66,18 @@ class RetentionTesting {
             return !snapshot.keep;
         });
 
+        let snapshotsToKeep = _.filter(snapshots, function(snapshot) {
+            return snapshot.keep;
+        });
+
+        console.log(snapshotsToKeep);
+
         return snapshotsToDelete;
     }
 
     getFirstSnapshotAfterDate (snapshots, date) {
-        let startDate = date.clone();
-
         for (let i = 0; i < snapshots.length; i++) {
-            if (moment.utc(snapshots[i].snapshot_date_time).valueOf() >= startDate.valueOf()) {
+            if (moment(snapshots[i].snapshot_date_time).isSameOrAfter(date)) {
                 return snapshots[i];
             }
         }
@@ -77,9 +85,9 @@ class RetentionTesting {
         return null;
     }
     sortSnapshots(snapshots) {
-        return snapshots.sort(function(a, b) {
-            return moment().utc(a.snapshot_date_time).valueOf() - moment().utc(b.snapshot_date_time).valueOf();
-        });
+        return _.orderBy(snapshots, function(snapshot) {
+            return moment(snapshot.snapshot_date_time).valueOf();
+        }, ['asc']);
     }
 }
 
